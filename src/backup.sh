@@ -13,23 +13,40 @@ info "Backup starting"
 TIME_START="$(date +%s.%N)"
 DOCKER_SOCK="/var/run/docker.sock"
 if [ -S "$DOCKER_SOCK" ]; then
-  TEMPFILE="$(mktemp)"
-  docker ps --format "{{.ID}}" --filter "label=docker-volume-backup.stop-during-backup=true" > "$TEMPFILE"
-  CONTAINERS_TO_STOP="$(cat $TEMPFILE | tr '\n' ' ')"
-  CONTAINERS_TO_STOP_TOTAL="$(cat $TEMPFILE | wc -l)"
+  TEMPFILE_CONTAINERS="$(mktemp)"
+  docker ps --format "{{.ID}}" --filter "label=docker-volume-backup.stop-during-backup=true" > "$TEMPFILE_CONTAINERS"
+  CONTAINERS_TO_STOP="$(cat $TEMPFILE_CONTAINERS | tr '\n' ' ')"
+  CONTAINERS_TO_STOP_TOTAL="$(cat $TEMPFILE_CONTAINERS | wc -l)"
   CONTAINERS_TOTAL="$(docker ps --format "{{.ID}}" | wc -l)"
-  rm "$TEMPFILE"
+  rm "$TEMPFILE_CONTAINERS"
   echo "$CONTAINERS_TOTAL containers running on host in total"
   echo "$CONTAINERS_TO_STOP_TOTAL containers marked to be stopped during backup"
+  
+  TEMPFILE_SERVICES="$(mktemp)"
+  docker service ls --format "{{.ID}}" --filter "label=docker-volume-backup.stop-during-backup=true" > "$TEMPFILE_SERVICES"
+  SERVICES_TO_DOWN=$(cat  $TEMPFILE_SERVICES | awk '{print}' ORS='=0 ')
+  SERVICES_TO_UP=$(cat  $TEMPFILE_SERVICES | awk '{print}' ORS='=1 ')
+  SERVICES_TO_DOWN_TOTAL="$(cat $TEMPFILE_SERVICES | wc -l)"
+  SERVICES_TOTAL="$(docker service ls --format "{{.ID}}" | wc -l)"
+  rm "$TEMPFILE_SERVICES"
+  echo "$SERVICES_TOTAL services running on host in total"
+  echo "$SERVICES_TO_DOWN_TOTAL services marked to down during backup"  
 else
   CONTAINERS_TO_STOP_TOTAL="0"
   CONTAINERS_TOTAL="0"
-  echo "Cannot access \"$DOCKER_SOCK\", won't look for containers to stop"
+  SERVICES_TO_DOWN_TOTAL="0"
+  SERVICES_TOTAL="0"  
+  echo "Cannot access \"$DOCKER_SOCK\", won't look for containers to stop and/or services to down"
 fi
 
 if [ "$CONTAINERS_TO_STOP_TOTAL" != "0" ]; then
   info "Stopping containers"
   docker stop $CONTAINERS_TO_STOP
+fi
+
+if [ "$SERVICES_TO_DOWN_TOTAL" != "0" ]; then
+  info "Scaling down services"
+  docker service scale $SERVICES_TO_DOWN
 fi
 
 if [ -S "$DOCKER_SOCK" ]; then
@@ -67,6 +84,11 @@ fi
 if [ "$CONTAINERS_TO_STOP_TOTAL" != "0" ]; then
   info "Starting containers back up"
   docker start $CONTAINERS_TO_STOP
+fi
+
+if [ "$SERVICES_TO_DOWN_TOTAL" != "0" ]; then
+  info "Scaling up services"
+  docker service scale $SERVICES_TO_UP
 fi
 
 info "Waiting before processing"
