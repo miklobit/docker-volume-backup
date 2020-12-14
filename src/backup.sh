@@ -50,16 +50,27 @@ if [ "$SERVICES_TO_DOWN_TOTAL" != "0" ]; then
 fi
 
 if [ -S "$DOCKER_SOCK" ]; then
-  TEMPFILE="$(mktemp)"
+  TEMPFILE_CONTAINERS="$(mktemp)"
   docker ps \
     --filter "label=docker-volume-backup.exec-pre-backup" \
     --format '{{.ID}} {{.Label "docker-volume-backup.exec-pre-backup"}}' \
-    > "$TEMPFILE"
+    > "$TEMPFILE_CONTAINERS"
   while read line; do
-    info "Pre-exec command: $line"
+    info "Pre-exec command (containers): $line"
     docker exec $line
-  done < "$TEMPFILE"
-  rm "$TEMPFILE"
+  done < "$TEMPFILE_CONTAINERS"
+  rm "$TEMPFILE_CONTAINERS"
+  
+  TEMPFILE_SERVICES="$(mktemp)"
+  docker service ls \
+    --filter "label=docker-volume-backup.exec-pre-backup" \
+    --format '{{.ID}} {{.Label "docker-volume-backup.exec-pre-backup"}}' \
+    > "$TEMPFILE_SERVICES"
+  while read line; do
+    info "Pre-exec command (services): $line"
+    docker exec $line
+  done < "$TEMPFILE_SERVICES"
+  rm "$TEMPFILE_SERVICES"  
 fi
 
 info "Creating backup"
@@ -69,16 +80,27 @@ BACKUP_SIZE="$(du --bytes $BACKUP_FILENAME | sed 's/\s.*$//')"
 TIME_BACKED_UP="$(date +%s.%N)"
 
 if [ -S "$DOCKER_SOCK" ]; then
-  TEMPFILE="$(mktemp)"
+  TEMPFILE_CONTAINERS="$(mktemp)"
   docker ps \
     --filter "label=docker-volume-backup.exec-post-backup" \
     --format '{{.ID}} {{.Label "docker-volume-backup.exec-post-backup"}}' \
-    > "$TEMPFILE"
+    > "$TEMPFILE_CONTAINERS"
   while read line; do
-    info "Post-exec command: $line"
+    info "Post-exec command (containers): $line"
     docker exec $line
-  done < "$TEMPFILE"
-  rm "$TEMPFILE"
+  done < "$TEMPFILE_CONTAINERS"
+  rm "$TEMPFILE_CONTAINERS"
+  TEMPFILE_SERVICES="$(mktemp)"
+  docker service ls \
+    --filter "label=docker-volume-backup.exec-post-backup" \
+    --format '{{.ID}} {{.Label "docker-volume-backup.exec-post-backup"}}' \
+    > "$TEMPFILE_SERVICES"
+  while read line; do
+    info "Post-exec command (services): $line"
+    docker exec $line
+  done < "$TEMPFILE_SERVICES"
+  rm "$TEMPFILE_SERVICES"  
+  
 fi
 
 if [ "$CONTAINERS_TO_STOP_TOTAL" != "0" ]; then
@@ -124,6 +146,8 @@ INFLUX_LINE="$INFLUXDB_MEASUREMENT\
  size_compressed_bytes=$BACKUP_SIZE\
 ,containers_total=$CONTAINERS_TOTAL\
 ,containers_stopped=$CONTAINERS_TO_STOP_TOTAL\
+,services_total=$SERVICES_TOTAL\
+,services_scaled_down=$SERVICES_TO_DOWN_TOTAL\
 ,time_wall=$(perl -E "say $TIME_FINISH - $TIME_START")\
 ,time_total=$(perl -E "say $TIME_FINISH - $TIME_START - $BACKUP_WAIT_SECONDS")\
 ,time_compress=$(perl -E "say $TIME_BACKED_UP - $TIME_BACK_UP")\
