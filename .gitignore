@@ -5,6 +5,7 @@ npm-debug.log
 .DS_Store
 .history
 .vscode
+commit.sh
 
 # Project
 # n/a
