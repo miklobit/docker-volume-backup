@@ -8,6 +8,7 @@ Docker image for performing simple backups of Docker volumes. Main features:
 - Optionally stops containers for the duration of the backup, and starts them again afterward, to ensure consistent backups
 - Optionally stops sevices for the duration of the backup, and starts them again afterward, to ensure consistent backups
 - Optionally `docker exec`s commands before/after backing up a container, to allow easy integration with database backup tools, for example
+- Optionally exec any command(s) before scaling down/after scaling up services 
 - Optionally ships backup metrics to [InfluxDB](https://docs.influxdata.com/influxdb/), for monitoring
 
 ## Examples
