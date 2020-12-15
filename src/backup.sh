@@ -39,6 +39,24 @@ else
   echo "Cannot access \"$DOCKER_SOCK\", won't look for containers to stop and/or services to down"
 fi
 
+
+if [ -S "$DOCKER_SOCK" ]; then
+# [command in service label]  
+  TEMPFILE_SERVICES="$(mktemp)"
+  docker service ls \
+    --filter "label=docker-volume-backup.exec-pre-backup" \
+    --format '{{.ID}}' | \
+        xargs docker service inspect \
+             --format='{{ range $k, $v := .Spec.Labels }}{{- if eq $k "docker-volume-backup.exec-pre-backup" -}}{{$v}}{{end}}{{end}}'  \
+    > "$TEMPFILE_SERVICES"
+  info "Pre-exec command(s) (services)"
+  cat "$TEMPFILE_SERVICES"
+  chmod u+x "$TEMPFILE_SERVICES" 
+  "$TEMPFILE_SERVICES"
+  rm "$TEMPFILE_SERVICES" 
+fi
+
+
 if [ "$CONTAINERS_TO_STOP_TOTAL" != "0" ]; then
   info "Stopping containers"
   docker stop $CONTAINERS_TO_STOP
@@ -50,6 +68,7 @@ if [ "$SERVICES_TO_DOWN_TOTAL" != "0" ]; then
 fi
 
 if [ -S "$DOCKER_SOCK" ]; then
+# docker exec container_ID [command in container label]
   TEMPFILE_CONTAINERS="$(mktemp)"
   docker ps \
     --filter "label=docker-volume-backup.exec-pre-backup" \
@@ -61,16 +80,6 @@ if [ -S "$DOCKER_SOCK" ]; then
   done < "$TEMPFILE_CONTAINERS"
   rm "$TEMPFILE_CONTAINERS"
   
-  TEMPFILE_SERVICES="$(mktemp)"
-  docker service ls \
-    --filter "label=docker-volume-backup.exec-pre-backup" \
-    --format '{{.ID}} {{.Label "docker-volume-backup.exec-pre-backup"}}' \
-    > "$TEMPFILE_SERVICES"
-  while read line; do
-    info "Pre-exec command (services): $line"
-    docker exec $line
-  done < "$TEMPFILE_SERVICES"
-  rm "$TEMPFILE_SERVICES"  
 fi
 
 info "Creating backup"
@@ -80,6 +89,7 @@ BACKUP_SIZE="$(du --bytes $BACKUP_FILENAME | sed 's/\s.*$//')"
 TIME_BACKED_UP="$(date +%s.%N)"
 
 if [ -S "$DOCKER_SOCK" ]; then
+# docker exec container_ID [command in container label]
   TEMPFILE_CONTAINERS="$(mktemp)"
   docker ps \
     --filter "label=docker-volume-backup.exec-post-backup" \
@@ -90,17 +100,7 @@ if [ -S "$DOCKER_SOCK" ]; then
     docker exec $line
   done < "$TEMPFILE_CONTAINERS"
   rm "$TEMPFILE_CONTAINERS"
-  TEMPFILE_SERVICES="$(mktemp)"
-  docker service ls \
-    --filter "label=docker-volume-backup.exec-post-backup" \
-    --format '{{.ID}} {{.Label "docker-volume-backup.exec-post-backup"}}' \
-    > "$TEMPFILE_SERVICES"
-  while read line; do
-    info "Post-exec command (services): $line"
-    docker exec $line
-  done < "$TEMPFILE_SERVICES"
-  rm "$TEMPFILE_SERVICES"  
-  
+
 fi
 
 if [ "$CONTAINERS_TO_STOP_TOTAL" != "0" ]; then
@@ -112,6 +112,23 @@ if [ "$SERVICES_TO_DOWN_TOTAL" != "0" ]; then
   info "Scaling up services"
   docker service scale $SERVICES_TO_UP
 fi
+
+if [ -S "$DOCKER_SOCK" ]; then
+# [command in service label]    
+  TEMPFILE_SERVICES="$(mktemp)"
+  docker service ls \
+    --filter "label=docker-volume-backup.exec-post-backup" \
+    --format '{{.ID}}' | \
+        xargs docker service inspect \
+             --format='{{ range $k, $v := .Spec.Labels }}{{- if eq $k "docker-volume-backup.exec-post-backup" -}}{{$v}}{{end}}{{end}}'  \
+    > "$TEMPFILE_SERVICES"
+  info "Post-exec command(s) (services)"
+  cat "$TEMPFILE_SERVICES"
+  chmod u+x "$TEMPFILE_SERVICES" 
+  "$TEMPFILE_SERVICES"
+  rm "$TEMPFILE_SERVICES"  
+fi
+
 
 info "Waiting before processing"
 echo "Sleeping $BACKUP_WAIT_SECONDS seconds..."
